@@ -17,8 +17,10 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 
 // Middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'],
-  credentials: true
+  origin: '*', // Allow all origins
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
 app.use(express.json())
 app.use(morgan('dev'))
