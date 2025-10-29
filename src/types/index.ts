@@ -5,6 +5,7 @@ export interface BlogPost {
   excerpt: string
   content: string
   featured_image?: string
+  is_featured?: boolean
   author_id: string
   status: 'draft' | 'published'
   views: number
