@@ -409,6 +409,178 @@ app.get('/api/quotes/daily', async (req: Request, res: Response) => {
   }
 })
 
+// Comments Routes
+// Get comments for a specific post (only approved)
+app.get('/api/comments/:postId', async (req: Request, res: Response) => {
+  try {
+    const { postId } = req.params
+    
+    const { data, error } = await supabase
+      .from('comments')
+      .select('*')
+      .eq('post_id', postId)
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false })
+    
+    if (error) throw error
+    
+    res.json(data || [])
+  } catch (error: any) {
+    console.error('Fetch comments error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch comments',
+      error: error.message 
+    })
+  }
+})
+
+// Create new comment
+app.post('/api/comments', async (req: Request, res: Response) => {
+  try {
+    const { post_id, author_name, author_email, comment_text } = req.body
+    
+    // Validation
+    if (!post_id || !author_name || !author_email || !comment_text) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'All fields are required' 
+      })
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(author_email)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid email format' 
+      })
+    }
+    
+    const commentData = {
+      post_id: post_id, // UUID, no need to parse
+      author_name: author_name.trim(),
+      author_email: author_email.trim().toLowerCase(),
+      comment_text: comment_text.trim(),
+      status: 'approved', // Auto-approve for testing (change to 'pending' for moderation)
+      created_at: new Date().toISOString()
+    }
+    
+    const { data, error } = await supabase
+      .from('comments')
+      .insert([commentData])
+      .select()
+      .single()
+    
+    if (error) throw error
+    
+    res.json({ 
+      success: true, 
+      message: 'Comment submitted successfully. It will appear after approval.',
+      data 
+    })
+  } catch (error: any) {
+    console.error('Create comment error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to submit comment',
+      error: error.message 
+    })
+  }
+})
+
+// Admin: Get all comments (with status filter)
+app.get('/api/admin/comments', async (req: Request, res: Response) => {
+  try {
+    const { status } = req.query
+    
+    let query = supabase
+      .from('comments')
+      .select('*')
+      .order('created_at', { ascending: false })
+    
+    if (status) {
+      query = query.eq('status', status)
+    }
+    
+    const { data, error } = await query
+    
+    if (error) throw error
+    
+    res.json({ success: true, data })
+  } catch (error: any) {
+    console.error('Fetch all comments error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch comments',
+      error: error.message 
+    })
+  }
+})
+
+// Admin: Update comment status (approve/spam/pending)
+app.patch('/api/admin/comments/:id/status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    const { status } = req.body
+    
+    if (!status || !['pending', 'approved', 'spam'].includes(status)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Valid status (pending, approved, or spam) is required' 
+      })
+    }
+    
+    const { data, error } = await supabase
+      .from('comments')
+      .update({ status })
+      .eq('id', id)
+      .select()
+      .single()
+    
+    if (error) throw error
+    
+    res.json({ 
+      success: true, 
+      message: `Comment ${status}`,
+      data 
+    })
+  } catch (error: any) {
+    console.error('Update comment status error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update comment status',
+      error: error.message 
+    })
+  }
+})
+
+// Admin: Delete comment
+app.delete('/api/admin/comments/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    
+    const { error } = await supabase
+      .from('comments')
+      .delete()
+      .eq('id', id)
+    
+    if (error) throw error
+    
+    res.json({ 
+      success: true, 
+      message: 'Comment deleted successfully' 
+    })
+  } catch (error: any) {
+    console.error('Delete comment error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete comment',
+      error: error.message 
+    })
+  }
+})
+
 // Image upload endpoint (multipart/form-data)
 app.post('/api/upload', upload.single('file'), async (req: Request, res: Response) => {
   try {
