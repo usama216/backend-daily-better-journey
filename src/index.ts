@@ -1,10 +1,12 @@
-import express, { Request, Response } from 'express'
+import express, { Request, Response, NextFunction } from 'express'
 import cors from 'cors'
 import morgan from 'morgan'
 import dotenv from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
 import multer from 'multer'
 import path from 'path'
+import bcrypt from 'bcrypt'
+import jwt from 'jsonwebtoken'
 
 // Load environment variables
 dotenv.config()
@@ -23,9 +25,23 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
 
 const UPLOAD_BUCKET = process.env.SUPABASE_BUCKET || 'images'
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production'
 
 // Multer for multipart parsing (memory storage)
 const upload = multer({ storage: multer.memoryStorage() })
+
+// Extend Request type to include user
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string
+        email: string
+        name: string
+      }
+    }
+  }
+}
 
 // Middleware
 app.use(cors())
@@ -33,12 +49,125 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(morgan('dev'))
 
+// Authentication Middleware
+const authenticateToken = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers['authorization']
+    const token = authHeader && authHeader.split(' ')[1] // Bearer TOKEN
+
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Access token required' })
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; name: string }
+    
+    // Verify user still exists
+    const { data: user, error } = await supabase
+      .from('admin_users')
+      .select('id, email, name')
+      .eq('id', decoded.id)
+      .single()
+
+    if (error || !user) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' })
+    }
+
+    req.user = user
+    next()
+  } catch (error: any) {
+    return res.status(403).json({ success: false, message: 'Invalid or expired token' })
+  }
+}
+
 // Health check endpoint
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({ 
     status: 'ok', 
     message: 'Daily Better Journey API is running',
     timestamp: new Date().toISOString()
+  })
+})
+
+// Auth Routes
+// Admin login
+app.post('/api/admin/login', async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body
+
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email and password are required' 
+      })
+    }
+
+    // Find user by email
+    const { data: user, error } = await supabase
+      .from('admin_users')
+      .select('id, email, name, password_hash')
+      .eq('email', email.toLowerCase().trim())
+      .single()
+
+    if (error || !user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid email or password' 
+      })
+    }
+
+    // Verify password
+    const isValidPassword = await bcrypt.compare(password, user.password_hash)
+
+    if (!isValidPassword) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid email or password' 
+      })
+    }
+
+    // Update last login
+    await supabase
+      .from('admin_users')
+      .update({ last_login: new Date().toISOString() })
+      .eq('id', user.id)
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, name: user.name },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    )
+
+    res.json({
+      success: true,
+      message: 'Login successful',
+      data: {
+        token,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name
+        }
+      }
+    })
+  } catch (error: any) {
+    console.error('Login error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to login',
+      error: error.message 
+    })
+  }
+})
+
+// Verify token endpoint
+app.get('/api/admin/verify', authenticateToken, async (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    message: 'Token is valid',
+    data: {
+      user: req.user
+    }
   })
 })
 
@@ -58,7 +187,7 @@ app.get('/api/categories', async (req: Request, res: Response) => {
   }
 })
 
-app.post('/api/categories', async (req: Request, res: Response) => {
+app.post('/api/categories', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { name, slug, description } = req.body
     if (!name) return res.status(400).json({ success: false, message: 'Name is required' })
@@ -80,7 +209,7 @@ app.post('/api/categories', async (req: Request, res: Response) => {
   }
 })
 
-app.put('/api/categories/:id', async (req: Request, res: Response) => {
+app.put('/api/categories/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params
     const { name, slug, description } = req.body
@@ -103,7 +232,7 @@ app.put('/api/categories/:id', async (req: Request, res: Response) => {
   }
 })
 
-app.delete('/api/categories/:id', async (req: Request, res: Response) => {
+app.delete('/api/categories/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params
     const { error } = await supabase.from('categories').delete().eq('id', id)
@@ -182,7 +311,7 @@ app.get('/api/posts/:id', async (req: Request, res: Response) => {
 })
 
 // Create new post
-app.post('/api/posts', async (req: Request, res: Response) => {
+app.post('/api/posts', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { title, slug, excerpt, content, featured_image, is_featured, status, category_id, tags, meta_description, meta_keywords } = req.body
     
@@ -239,7 +368,7 @@ app.post('/api/posts', async (req: Request, res: Response) => {
 })
 
 // Update post
-app.put('/api/posts/:id', async (req: Request, res: Response) => {
+app.put('/api/posts/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params
     const { title, slug, excerpt, content, featured_image, is_featured, status, category_id, tags, meta_description, meta_keywords } = req.body
@@ -291,7 +420,7 @@ app.put('/api/posts/:id', async (req: Request, res: Response) => {
 })
 
 // Delete post
-app.delete('/api/posts/:id', async (req: Request, res: Response) => {
+app.delete('/api/posts/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params
     
@@ -317,7 +446,7 @@ app.delete('/api/posts/:id', async (req: Request, res: Response) => {
 })
 
 // Update post status
-app.patch('/api/posts/:id/status', async (req: Request, res: Response) => {
+app.patch('/api/posts/:id/status', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params
     const { status } = req.body
@@ -492,7 +621,7 @@ app.post('/api/comments', async (req: Request, res: Response) => {
 })
 
 // Admin: Get all comments (with status filter)
-app.get('/api/admin/comments', async (req: Request, res: Response) => {
+app.get('/api/admin/comments', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { status } = req.query
     
@@ -521,7 +650,7 @@ app.get('/api/admin/comments', async (req: Request, res: Response) => {
 })
 
 // Admin: Update comment status (approve/spam/pending)
-app.patch('/api/admin/comments/:id/status', async (req: Request, res: Response) => {
+app.patch('/api/admin/comments/:id/status', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params
     const { status } = req.body
@@ -558,7 +687,7 @@ app.patch('/api/admin/comments/:id/status', async (req: Request, res: Response) 
 })
 
 // Admin: Delete comment
-app.delete('/api/admin/comments/:id', async (req: Request, res: Response) => {
+app.delete('/api/admin/comments/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params
     
@@ -583,8 +712,205 @@ app.delete('/api/admin/comments/:id', async (req: Request, res: Response) => {
   }
 })
 
+// Contact Form Routes
+// Submit contact form
+app.post('/api/contact', async (req: Request, res: Response) => {
+  try {
+    const { name, email, message } = req.body
+    
+    // Validation
+    if (!name || !email || !message) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Name, email, and message are required' 
+      })
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid email format' 
+      })
+    }
+    
+    const contactData = {
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      message: message.trim(),
+      status: 'new',
+      created_at: new Date().toISOString()
+    }
+    
+    const { data, error } = await supabase
+      .from('contact_submissions')
+      .insert([contactData])
+      .select()
+      .single()
+    
+    if (error) throw error
+    
+    res.json({ 
+      success: true, 
+      message: 'Thank you for contacting us! We will get back to you soon.',
+      data 
+    })
+  } catch (error: any) {
+    console.error('Contact submission error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to submit contact form',
+      error: error.message 
+    })
+  }
+})
+
+// Admin: Get all contact submissions
+app.get('/api/admin/contacts', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { status, limit = 50, offset = 0 } = req.query
+    
+    let query = supabase
+      .from('contact_submissions')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(Number(offset), Number(offset) + Number(limit) - 1)
+    
+    if (status) {
+      query = query.eq('status', status)
+    }
+    
+    const { data, error } = await query
+    
+    if (error) throw error
+    
+    // Get total count for pagination
+    let countQuery = supabase
+      .from('contact_submissions')
+      .select('*', { count: 'exact', head: true })
+    
+    if (status) {
+      countQuery = countQuery.eq('status', status)
+    }
+    
+    const { count } = await countQuery
+    
+    res.json({ 
+      success: true, 
+      data,
+      pagination: {
+        total: count || 0,
+        limit: Number(limit),
+        offset: Number(offset)
+      }
+    })
+  } catch (error: any) {
+    console.error('Fetch contacts error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch contact submissions',
+      error: error.message 
+    })
+  }
+})
+
+// Admin: Get single contact submission
+app.get('/api/admin/contacts/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    
+    const { data, error } = await supabase
+      .from('contact_submissions')
+      .select('*')
+      .eq('id', id)
+      .single()
+    
+    if (error) throw error
+    
+    if (!data) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Contact submission not found' 
+      })
+    }
+    
+    res.json({ success: true, data })
+  } catch (error: any) {
+    console.error('Fetch contact error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch contact submission',
+      error: error.message 
+    })
+  }
+})
+
+// Admin: Update contact submission status
+app.patch('/api/admin/contacts/:id/status', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    const { status } = req.body
+    
+    if (!status || !['new', 'read', 'replied', 'archived'].includes(status)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Valid status (new, read, replied, or archived) is required' 
+      })
+    }
+    
+    const { data, error } = await supabase
+      .from('contact_submissions')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single()
+    
+    if (error) throw error
+    
+    res.json({ 
+      success: true, 
+      message: `Contact submission marked as ${status}`,
+      data 
+    })
+  } catch (error: any) {
+    console.error('Update contact status error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update contact status',
+      error: error.message 
+    })
+  }
+})
+
+// Admin: Delete contact submission
+app.delete('/api/admin/contacts/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    
+    const { error } = await supabase
+      .from('contact_submissions')
+      .delete()
+      .eq('id', id)
+    
+    if (error) throw error
+    
+    res.json({ 
+      success: true, 
+      message: 'Contact submission deleted successfully' 
+    })
+  } catch (error: any) {
+    console.error('Delete contact error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete contact submission',
+      error: error.message 
+    })
+  }
+})
+
 // Image upload endpoint (multipart/form-data)
-app.post('/api/upload', upload.single('file'), async (req: Request, res: Response) => {
+app.post('/api/upload', authenticateToken, upload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file provided' })

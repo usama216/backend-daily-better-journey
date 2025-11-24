@@ -1,0 +1,23 @@
+[
+  {
+    "id": "6ca1591d-d13b-41d3-b12e-d06b54a1d3d2",
+    "email": "usamajawad125@gmail.com",
+    "subscribed_at": "2025-10-28T07:32:21.494948+00:00",
+    "unsubscribed_at": null,
+    "is_active": true
+  },
+  {
+    "id": "2bdf18c3-23fb-4c4d-b97b-56146891af95",
+    "email": "usamajatt16@gmail.com",
+    "subscribed_at": "2025-10-28T08:52:13.91827+00:00",
+    "unsubscribed_at": null,
+    "is_active": true
+  },
+  {
+    "id": "c7e9478f-df50-4c26-8c61-bb792f5cb6ef",
+    "email": "rabiya@live.com",
+    "subscribed_at": "2025-11-04T04:28:32.389322+00:00",
+    "unsubscribed_at": null,
+    "is_active": true
+  }
+]

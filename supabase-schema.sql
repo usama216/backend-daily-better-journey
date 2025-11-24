@@ -85,3 +85,66 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_posts_updated_at BEFORE UPDATE ON posts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Comments table
+CREATE TABLE IF NOT EXISTS comments (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  author_name TEXT NOT NULL,
+  author_email TEXT NOT NULL,
+  comment_text TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'spam')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for comments
+CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id);
+CREATE INDEX IF NOT EXISTS idx_comments_status ON comments(status);
+CREATE INDEX IF NOT EXISTS idx_comments_created_at ON comments(created_at DESC);
+
+-- Contact Submissions table
+CREATE TABLE IF NOT EXISTS contact_submissions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'read', 'replied', 'archived')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for contact submissions
+CREATE INDEX IF NOT EXISTS idx_contact_submissions_status ON contact_submissions(status);
+CREATE INDEX IF NOT EXISTS idx_contact_submissions_created_at ON contact_submissions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_contact_submissions_email ON contact_submissions(email);
+
+-- Trigger to automatically update updated_at for contact_submissions
+CREATE TRIGGER update_contact_submissions_updated_at BEFORE UPDATE ON contact_submissions
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Admin Users table for authentication
+CREATE TABLE IF NOT EXISTS admin_users (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  name TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  last_login TIMESTAMPTZ
+);
+
+-- Index for admin_users email
+CREATE INDEX IF NOT EXISTS idx_admin_users_email ON admin_users(email);
+
+-- Insert default admin user (password: Usama@216)
+-- Password hash: bcrypt hash of "Usama@216"
+INSERT INTO admin_users (email, password_hash, name) 
+VALUES (
+  'usamajawad125@gmail.com',
+  '$2b$10$KK0dO4sHEUNSGiOb4udl6O/11bNjdXPJoCOrZFq0eCke5Cki1/NTy',
+  'Admin User'
+) ON CONFLICT (email) DO NOTHING;
+
+-- Trigger to automatically update updated_at for admin_users
+CREATE TRIGGER update_admin_users_updated_at BEFORE UPDATE ON admin_users
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
