@@ -755,7 +755,21 @@ app.post('/api/contact', async (req: Request, res: Response) => {
     }
     
     // Add optional fields if provided
-    if (message) contactData.message = message.trim()
+    // Combine all text fields into message for backward compatibility if message not provided
+    const allTextFields = [
+      what_brought_you,
+      challenge_description,
+      hope_to_achieve,
+      anything_else
+    ].filter(Boolean).join('\n\n')
+    
+    if (message) {
+      contactData.message = message.trim()
+    } else if (allTextFields) {
+      // If no message but we have other fields, combine them
+      contactData.message = allTextFields
+    }
+    
     if (what_brought_you) contactData.what_brought_you = what_brought_you.trim()
     if (challenge_description) contactData.challenge_description = challenge_description.trim()
     if (guidance_areas && Array.isArray(guidance_areas)) {

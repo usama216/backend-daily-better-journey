@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS contact_submissions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT NOT NULL,
-  message TEXT NOT NULL,
+  message TEXT, -- Made optional since we have detailed fields now
   what_brought_you TEXT,
   challenge_description TEXT,
   guidance_areas TEXT[], -- Array of selected areas
@@ -126,6 +126,10 @@ ADD COLUMN IF NOT EXISTS guidance_areas TEXT[],
 ADD COLUMN IF NOT EXISTS other_guidance_area TEXT,
 ADD COLUMN IF NOT EXISTS hope_to_achieve TEXT,
 ADD COLUMN IF NOT EXISTS anything_else TEXT;
+
+-- Migration: Make message column optional (run this if table already exists)
+ALTER TABLE contact_submissions 
+ALTER COLUMN message DROP NOT NULL;
 
 -- Indexes for contact submissions
 CREATE INDEX IF NOT EXISTS idx_contact_submissions_status ON contact_submissions(status);
