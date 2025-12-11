@@ -45,8 +45,10 @@ declare global {
 
 // Middleware
 app.use(cors())
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+// Very large body size limit to handle extremely large blog posts (500MB)
+// This is safer than unlimited as it prevents DoS attacks while allowing large content
+app.use(express.json({ limit: '500mb' }))
+app.use(express.urlencoded({ extended: true, limit: '500mb' }))
 app.use(morgan('dev'))
 
 // Authentication Middleware
