@@ -107,10 +107,25 @@ CREATE TABLE IF NOT EXISTS contact_submissions (
   name TEXT NOT NULL,
   email TEXT NOT NULL,
   message TEXT NOT NULL,
+  what_brought_you TEXT,
+  challenge_description TEXT,
+  guidance_areas TEXT[], -- Array of selected areas
+  other_guidance_area TEXT, -- For "Other" option
+  hope_to_achieve TEXT,
+  anything_else TEXT,
   status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'read', 'replied', 'archived')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration: Add new columns to existing table (run this if table already exists)
+ALTER TABLE contact_submissions 
+ADD COLUMN IF NOT EXISTS what_brought_you TEXT,
+ADD COLUMN IF NOT EXISTS challenge_description TEXT,
+ADD COLUMN IF NOT EXISTS guidance_areas TEXT[],
+ADD COLUMN IF NOT EXISTS other_guidance_area TEXT,
+ADD COLUMN IF NOT EXISTS hope_to_achieve TEXT,
+ADD COLUMN IF NOT EXISTS anything_else TEXT;
 
 -- Indexes for contact submissions
 CREATE INDEX IF NOT EXISTS idx_contact_submissions_status ON contact_submissions(status);

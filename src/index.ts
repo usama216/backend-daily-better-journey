@@ -718,13 +718,23 @@ app.delete('/api/admin/comments/:id', authenticateToken, async (req: Request, re
 // Submit contact form
 app.post('/api/contact', async (req: Request, res: Response) => {
   try {
-    const { name, email, message } = req.body
+    const { 
+      name, 
+      email, 
+      message,
+      what_brought_you,
+      challenge_description,
+      guidance_areas,
+      other_guidance_area,
+      hope_to_achieve,
+      anything_else
+    } = req.body
     
-    // Validation
-    if (!name || !email || !message) {
+    // Validation - name and email are required
+    if (!name || !email) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Name, email, and message are required' 
+        message: 'Name and email are required' 
       })
     }
 
@@ -737,13 +747,23 @@ app.post('/api/contact', async (req: Request, res: Response) => {
       })
     }
     
-    const contactData = {
+    const contactData: any = {
       name: name.trim(),
       email: email.trim().toLowerCase(),
-      message: message.trim(),
       status: 'new',
       created_at: new Date().toISOString()
     }
+    
+    // Add optional fields if provided
+    if (message) contactData.message = message.trim()
+    if (what_brought_you) contactData.what_brought_you = what_brought_you.trim()
+    if (challenge_description) contactData.challenge_description = challenge_description.trim()
+    if (guidance_areas && Array.isArray(guidance_areas)) {
+      contactData.guidance_areas = guidance_areas.filter((area: string) => area && area.trim())
+    }
+    if (other_guidance_area) contactData.other_guidance_area = other_guidance_area.trim()
+    if (hope_to_achieve) contactData.hope_to_achieve = hope_to_achieve.trim()
+    if (anything_else) contactData.anything_else = anything_else.trim()
     
     const { data, error } = await supabase
       .from('contact_submissions')
