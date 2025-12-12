@@ -498,13 +498,68 @@ app.post('/api/newsletter/subscribe', async (req: Request, res: Response) => {
         message: 'Email is required' 
       })
     }
+
+    // Normalize email (lowercase and trim)
+    const normalizedEmail = email.toLowerCase().trim()
+
+    // Check if email already exists
+    const { data: existingSubscriber, error: checkError } = await supabase
+      .from('newsletter_subscribers')
+      .select('id, email, is_active')
+      .eq('email', normalizedEmail)
+      .single()
+
+    // If subscriber exists
+    if (existingSubscriber) {
+      if (existingSubscriber.is_active) {
+        return res.status(409).json({ 
+          success: false, 
+          message: 'This email is already subscribed to the newsletter'
+        })
+      } else {
+        // If unsubscribed, reactivate the subscription
+        const { data, error: updateError } = await supabase
+          .from('newsletter_subscribers')
+          .update({ 
+            is_active: true,
+            unsubscribed_at: null,
+            subscribed_at: new Date().toISOString()
+          })
+          .eq('id', existingSubscriber.id)
+          .select()
+          .single()
+
+        if (updateError) throw updateError
+
+        return res.json({ 
+          success: true, 
+          message: 'Successfully resubscribed to newsletter',
+          data 
+        })
+      }
+    }
+
+    // If check error is not "not found", it's a real error
+    if (checkError && checkError.code !== 'PGRST116') {
+      throw checkError
+    }
     
+    // Insert new subscriber
     const { data, error } = await supabase
       .from('newsletter_subscribers')
-      .insert([{ email }])
+      .insert([{ email: normalizedEmail }])
       .select()
     
-    if (error) throw error
+    if (error) {
+      // Check for duplicate key constraint error
+      if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
+        return res.status(409).json({ 
+          success: false, 
+          message: 'This email is already subscribed to the newsletter'
+        })
+      }
+      throw error
+    }
     
     res.json({ 
       success: true, 
@@ -513,9 +568,93 @@ app.post('/api/newsletter/subscribe', async (req: Request, res: Response) => {
     })
   } catch (error: any) {
     console.error('Newsletter subscription error:', error)
+    
+    // Handle duplicate key constraint
+    if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'This email is already subscribed to the newsletter'
+      })
+    }
+    
     res.status(500).json({ 
       success: false, 
-      message: 'Failed to subscribe',
+      message: 'Failed to subscribe. Please try again later.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    })
+  }
+})
+
+// Admin: Get all newsletter subscribers
+app.get('/api/admin/newsletter/subscribers', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { is_active, limit = 100, offset = 0 } = req.query
+    
+    let query = supabase
+      .from('newsletter_subscribers')
+      .select('*')
+      .order('subscribed_at', { ascending: false })
+      .range(Number(offset), Number(offset) + Number(limit) - 1)
+    
+    if (is_active !== undefined) {
+      query = query.eq('is_active', is_active === 'true')
+    }
+    
+    const { data, error } = await query
+    
+    if (error) throw error
+    
+    // Get total count for pagination
+    let countQuery = supabase
+      .from('newsletter_subscribers')
+      .select('*', { count: 'exact', head: true })
+    
+    if (is_active !== undefined) {
+      countQuery = countQuery.eq('is_active', is_active === 'true')
+    }
+    
+    const { count } = await countQuery
+    
+    res.json({ 
+      success: true, 
+      data,
+      pagination: {
+        total: count || 0,
+        limit: Number(limit),
+        offset: Number(offset)
+      }
+    })
+  } catch (error: any) {
+    console.error('Fetch newsletter subscribers error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch newsletter subscribers',
+      error: error.message 
+    })
+  }
+})
+
+// Admin: Delete newsletter subscriber
+app.delete('/api/admin/newsletter/subscribers/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    
+    const { error } = await supabase
+      .from('newsletter_subscribers')
+      .delete()
+      .eq('id', id)
+    
+    if (error) throw error
+    
+    res.json({ 
+      success: true, 
+      message: 'Newsletter subscriber deleted successfully' 
+    })
+  } catch (error: any) {
+    console.error('Delete newsletter subscriber error:', error)
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete newsletter subscriber',
       error: error.message 
     })
   }
