@@ -341,7 +341,8 @@ app.post('/api/posts', authenticateToken, async (req: Request, res: Response) =>
       views: 0,
       meta_description: meta_description || null,
       meta_keywords: meta_keywords || null,
-      category_id: category_id || null,
+      // Convert empty string to null for UUID fields (PostgreSQL doesn't accept empty strings for UUID)
+      category_id: (category_id && category_id !== '') ? category_id : null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
@@ -386,7 +387,8 @@ app.put('/api/posts/:id', authenticateToken, async (req: Request, res: Response)
     if (featured_image !== undefined) updateData.featured_image = featured_image
     if (is_featured !== undefined) updateData.is_featured = !!is_featured
     if (status) updateData.status = status
-    if (category_id !== undefined) updateData.category_id = category_id
+    // Convert empty string to null for UUID fields (PostgreSQL doesn't accept empty strings for UUID)
+    if (category_id !== undefined) updateData.category_id = category_id === '' ? null : category_id
     if (meta_description !== undefined) updateData.meta_description = meta_description
     if (meta_keywords !== undefined) updateData.meta_keywords = meta_keywords
     
