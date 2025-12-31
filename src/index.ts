@@ -273,14 +273,42 @@ app.get('/api/categories/:slug/posts', async (req: Request, res: Response) => {
 
 app.get('/api/posts', async (req: Request, res: Response) => {
   try {
+    const limit = parseInt(req.query.limit as string) || 10
+    const offset = parseInt(req.query.offset as string) || 0
+    const page = parseInt(req.query.page as string)
+    
+    // Calculate offset from page if page is provided
+    const calculatedOffset = page ? (page - 1) * limit : offset
+    
+    // Get total count for pagination
+    const { count } = await supabase
+      .from('posts')
+      .select('*', { count: 'exact', head: true })
+    
+    // Get paginated posts
     const { data, error } = await supabase
       .from('posts')
       .select('*')
       .order('created_at', { ascending: false })
+      .range(calculatedOffset, calculatedOffset + limit - 1)
     
     if (error) throw error
     
-    res.json({ success: true, data })
+    const total = count || 0
+    const totalPages = Math.ceil(total / limit)
+    const currentPage = page || Math.floor(calculatedOffset / limit) + 1
+    
+    res.json({ 
+      success: true, 
+      data,
+      pagination: {
+        total,
+        limit,
+        offset: calculatedOffset,
+        page: currentPage,
+        totalPages
+      }
+    })
   } catch (error: any) {
     res.status(500).json({ 
       success: false, 
