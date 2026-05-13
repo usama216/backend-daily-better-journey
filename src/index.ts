@@ -318,6 +318,75 @@ app.get('/api/posts', async (req: Request, res: Response) => {
   }
 })
 
+/** Sitemap & static params — small payload (no `content` HTML). */
+app.get('/api/posts/slugs', async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('posts')
+      .select('slug, status, created_at, updated_at')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    res.json({ success: true, data: data || [] })
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch post slugs',
+      error: error.message,
+    })
+  }
+})
+
+/** Published cards / related / featured on frontend without full HTML body. */
+app.get('/api/posts/summaries', async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from('posts')
+      .select(
+        'id, slug, title, excerpt, featured_image, category_id, is_featured, status, created_at, updated_at'
+      )
+      .eq('status', 'published')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    res.json({ success: true, data: data || [] })
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch post summaries',
+      error: error.message,
+    })
+  }
+})
+
+/** Single post by slug — register before `/api/posts/:id` */
+app.get('/api/posts/slug/:slug', async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params
+
+    const { data, error } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('slug', slug)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) {
+      return res.status(404).json({ success: false, message: 'Post not found' })
+    }
+
+    res.json({ success: true, data })
+  } catch (error: any) {
+    res.status(404).json({
+      success: false,
+      message: 'Post not found',
+      error: error.message,
+    })
+  }
+})
+
 app.get('/api/posts/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
