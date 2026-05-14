@@ -51,6 +51,12 @@ app.use(express.json({ limit: '500mb' }))
 app.use(express.urlencoded({ extended: true, limit: '500mb' }))
 app.use(morgan('dev'))
 
+function trimOrNull(v: unknown): string | null {
+  if (v === undefined || v === null) return null
+  const s = String(v).trim()
+  return s === '' ? null : s
+}
+
 // Authentication Middleware
 const authenticateToken = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -344,7 +350,7 @@ app.get('/api/posts/summaries', async (req: Request, res: Response) => {
     const { data, error } = await supabase
       .from('posts')
       .select(
-        'id, slug, title, excerpt, featured_image, category_id, is_featured, status, created_at, updated_at'
+        'id, slug, title, excerpt, featured_image, category_id, is_featured, status, created_at, updated_at, byline_author_name, byline_author_image_url'
       )
       .eq('status', 'published')
       .order('created_at', { ascending: false })
@@ -412,7 +418,22 @@ app.get('/api/posts/:id', async (req: Request, res: Response) => {
 // Create new post
 app.post('/api/posts', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const { title, slug, excerpt, content, featured_image, is_featured, status, category_id, tags, meta_description, meta_keywords } = req.body
+    const {
+      title,
+      slug,
+      excerpt,
+      content,
+      featured_image,
+      is_featured,
+      status,
+      category_id,
+      tags,
+      meta_description,
+      meta_keywords,
+      byline_author_name,
+      byline_author_bio,
+      byline_author_image_url,
+    } = req.body
     
     if (!title || !content) {
       return res.status(400).json({ 
@@ -438,6 +459,9 @@ app.post('/api/posts', authenticateToken, async (req: Request, res: Response) =>
       views: 0,
       meta_description: meta_description || null,
       meta_keywords: meta_keywords || null,
+      byline_author_name: trimOrNull(byline_author_name),
+      byline_author_bio: trimOrNull(byline_author_bio),
+      byline_author_image_url: trimOrNull(byline_author_image_url),
       // Convert empty string to null for UUID fields (PostgreSQL doesn't accept empty strings for UUID)
       category_id: (category_id && category_id !== '') ? category_id : null,
       created_at: new Date().toISOString(),
@@ -471,7 +495,22 @@ app.post('/api/posts', authenticateToken, async (req: Request, res: Response) =>
 app.put('/api/posts/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params
-    const { title, slug, excerpt, content, featured_image, is_featured, status, category_id, tags, meta_description, meta_keywords } = req.body
+    const {
+      title,
+      slug,
+      excerpt,
+      content,
+      featured_image,
+      is_featured,
+      status,
+      category_id,
+      tags,
+      meta_description,
+      meta_keywords,
+      byline_author_name,
+      byline_author_bio,
+      byline_author_image_url,
+    } = req.body
     
     const updateData: any = {
       updated_at: new Date().toISOString()
@@ -488,7 +527,11 @@ app.put('/api/posts/:id', authenticateToken, async (req: Request, res: Response)
     if (category_id !== undefined) updateData.category_id = category_id === '' ? null : category_id
     if (meta_description !== undefined) updateData.meta_description = meta_description
     if (meta_keywords !== undefined) updateData.meta_keywords = meta_keywords
-    
+    if (byline_author_name !== undefined) updateData.byline_author_name = trimOrNull(byline_author_name)
+    if (byline_author_bio !== undefined) updateData.byline_author_bio = trimOrNull(byline_author_bio)
+    if (byline_author_image_url !== undefined)
+      updateData.byline_author_image_url = trimOrNull(byline_author_image_url)
+
     const { data, error } = await supabase
       .from('posts')
       .update(updateData)

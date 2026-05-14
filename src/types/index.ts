@@ -7,6 +7,10 @@ export interface BlogPost {
   featured_image?: string
   is_featured?: boolean
   author_id: string
+  /** Display name for this article only (readers / byline). */
+  byline_author_name?: string | null
+  byline_author_bio?: string | null
+  byline_author_image_url?: string | null
   status: 'draft' | 'published'
   views: number
   created_at: string
