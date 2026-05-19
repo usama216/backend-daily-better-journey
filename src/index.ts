@@ -286,34 +286,48 @@ app.get('/api/posts', async (req: Request, res: Response) => {
     // Calculate offset from page if page is provided
     const calculatedOffset = page ? (page - 1) * limit : offset
     
-    // Get total count for pagination
-    const { count } = await supabase
-      .from('posts')
-      .select('*', { count: 'exact', head: true })
-    
-    // Get paginated posts
-    const { data, error } = await supabase
-      .from('posts')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .range(calculatedOffset, calculatedOffset + limit - 1)
-    
+    const [
+      { count },
+      { count: publishedCount },
+      { count: draftCount },
+      { data: viewRows, error: viewsError },
+      { data, error },
+    ] = await Promise.all([
+      supabase.from('posts').select('*', { count: 'exact', head: true }),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'published'),
+      supabase.from('posts').select('*', { count: 'exact', head: true }).eq('status', 'draft'),
+      supabase.from('posts').select('views'),
+      supabase
+        .from('posts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(calculatedOffset, calculatedOffset + limit - 1),
+    ])
+
     if (error) throw error
-    
+    if (viewsError) throw viewsError
+
     const total = count || 0
     const totalPages = Math.ceil(total / limit)
     const currentPage = page || Math.floor(calculatedOffset / limit) + 1
-    
-    res.json({ 
-      success: true, 
+    const totalViews = (viewRows || []).reduce((sum, row) => sum + (row.views || 0), 0)
+
+    res.json({
+      success: true,
       data,
       pagination: {
         total,
         limit,
         offset: calculatedOffset,
         page: currentPage,
-        totalPages
-      }
+        totalPages,
+      },
+      stats: {
+        total,
+        published: publishedCount || 0,
+        draft: draftCount || 0,
+        totalViews,
+      },
     })
   } catch (error: any) {
     res.status(500).json({ 
